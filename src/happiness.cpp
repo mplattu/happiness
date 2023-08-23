@@ -1,4 +1,9 @@
 #include <Arduino_MKRGPS.h>
+#include <SPI.h>
+#include <SD.h>
+
+const int chipSelect = SDCARD_SS_PIN;
+
 
 void setup() {
     // put your setup code here, to run once:
@@ -10,6 +15,13 @@ void setup() {
         while (1);
     }
 
+    Serial.print("Initializing SD card...");
+    if (!SD.begin(chipSelect)) {
+        Serial.println("Failed. Halting.");
+        while (1);
+    }
+    Serial.println("OK");
+
     Serial.print("Configuring GPS refresh rate...");
     GPS.setUpdateRate(2000, 1, 1);
     Serial.println("OK");
@@ -20,6 +32,30 @@ void setup() {
     }
     Serial.print("OK");
 }
+
+void appendDataFile(float latitude, float longitude, float altitude, float speed, int satellites, unsigned long unixTime) {
+    File f = SD.open("data.log", FILE_WRITE);
+    if (f) {
+        f.print("{\"latitude\":");
+        f.print(latitude, 7);
+        f.print(",\"longitude\":");
+        f.print(longitude, 7);
+        f.print(",\"altitude\":");
+        f.print(altitude, 1);
+        f.print(",\"speed\":");
+        f.print(speed, 1);
+        f.print(",\"satellites\":");
+        f.print(satellites);
+        f.print(",\"unixTime\":");
+        f.print(unixTime);
+        f.println("}");
+        f.close();
+    }
+    else {
+        Serial.println("Could not open SD for writing");
+    }
+}
+
 
 void loop() {
     GPS.available();
@@ -44,5 +80,7 @@ void loop() {
         Serial.print(satellites);
         Serial.print("  Time: ");
         Serial.println(unixTime);
+
+        appendDataFile(latitude, longitude, altitude, speed, satellites, unixTime);
     }
 }
