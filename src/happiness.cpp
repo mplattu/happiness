@@ -1,24 +1,65 @@
 #include <Arduino_MKRGPS.h>
 #include <SPI.h>
 #include <SD.h>
+#include <RTCZero.h>
 
 const int chipSelect = SDCARD_SS_PIN;
 
+int pinLed = LED_BUILTIN;
+int pinButtonGreen = 5;
+int pinButtonRed = 6;
+bool buttonPressedGreen;
+bool buttonPressedRed;
+
+RTCZero rtc;
+
+void onButtonPressedGreen() {
+    buttonPressedGreen = true;
+}
+
+void onButtonPressedRed() {
+    buttonPressedRed = true;
+}
+
+void signalLedOff() {
+    digitalWrite(pinLed, LOW);
+}
+
+void signalLedOn() {
+    digitalWrite(pinLed, HIGH);
+}
+
+void signalLedBlinkAndHalt(String errorMessage) {
+    while (1) {
+        Serial.println(errorMessage);
+        signalLedOff();
+        delay(200);
+        signalLedOn();
+        delay(200);
+    }
+}
 
 void setup() {
     // put your setup code here, to run once:
     Serial.begin(115200);
     while (!Serial);
 
+    pinMode(pinLed, OUTPUT);
+    signalLedOff();
+
+    Serial.print("Initializing RTC...");
+    rtc.begin();
+    rtc.setTime(0, 0, 0);
+    rtc.setDate(0, 0, 0);
+    Serial.println("OK");
+
     if (!GPS.begin()) {
-        Serial.println("Failed to initialise GPS. Halting.");
-        while (1);
+        signalLedBlinkAndHalt("Failed to initialise GPS. Halting.");
     }
 
     Serial.print("Initializing SD card...");
     if (!SD.begin(chipSelect)) {
-        Serial.println("Failed. Halting.");
-        while (1);
+        signalLedBlinkAndHalt("Failed to initialise SD card. Halting.");
     }
     Serial.println("OK");
 
@@ -29,11 +70,25 @@ void setup() {
     Serial.print("Waiting for GPS/satellites...");
     while (GPS.satellites() == 0) {
         GPS.available();
+        if (rtc.getSeconds() % 2 == 0) {
+            signalLedOff();
+        }
+        else {
+            signalLedOn();
+        }
     }
-    Serial.print("OK");
+    Serial.println("OK");
+
+    pinMode(pinButtonGreen, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(pinButtonGreen), onButtonPressedGreen, FALLING);
+    buttonPressedGreen = false;
+
+    pinMode(pinButtonRed, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(pinButtonRed), onButtonPressedRed, FALLING);
+    buttonPressedRed = false;
 }
 
-void appendDataFile(float latitude, float longitude, float altitude, float speed, int satellites, unsigned long unixTime) {
+void appendDataFile(float latitude, float longitude, float altitude, float speed, int satellites, unsigned long unixTime, String action) {
     File f = SD.open("data.log", FILE_WRITE);
     if (f) {
         f.print("{\"latitude\":");
@@ -48,6 +103,9 @@ void appendDataFile(float latitude, float longitude, float altitude, float speed
         f.print(satellites);
         f.print(",\"unixTime\":");
         f.print(unixTime);
+        f.print(",\"action\":\"");
+        f.print(action);
+        f.print("\"");
         f.println("}");
         f.close();
     }
@@ -55,7 +113,6 @@ void appendDataFile(float latitude, float longitude, float altitude, float speed
         Serial.println("Could not open SD for writing");
     }
 }
-
 
 void loop() {
     GPS.available();
@@ -68,6 +125,8 @@ void loop() {
     unsigned long unixTime = GPS.getTime();
 
     if (satellites != 0) {
+        signalLedOn();
+
         Serial.print("Location: ");
         Serial.print(latitude, 7);
         Serial.print(", ");
@@ -81,6 +140,23 @@ void loop() {
         Serial.print("  Time: ");
         Serial.println(unixTime);
 
-        appendDataFile(latitude, longitude, altitude, speed, satellites, unixTime);
+        if (buttonPressedGreen) {
+            appendDataFile(latitude, longitude, altitude, speed, satellites, unixTime, "green");
+            Serial.println("Button: Green");
+            signalLedOff();
+            delay(1000);
+            buttonPressedGreen = false;
+        }
+
+        if (buttonPressedRed) {
+            appendDataFile(latitude, longitude, altitude, speed, satellites, unixTime, "red");
+            Serial.println("Button: Red");
+            signalLedOff();
+            delay(1000);
+            buttonPressedRed = false;
+        }
+    }
+    else {
+        signalLedOff();
     }
 }
