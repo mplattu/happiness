@@ -10,6 +10,7 @@ int pinButtonGreen = 5;
 int pinButtonRed = 6;
 bool buttonPressedGreen;
 bool buttonPressedRed;
+bool firstCycle;
 
 RTCZero rtc;
 
@@ -39,6 +40,32 @@ void signalLedBlinkAndHalt(String errorMessage) {
     }
 }
 
+void appendDataFile(float latitude, float longitude, float altitude, float speed, int satellites, unsigned long unixTime, String action) {
+    File f = SD.open("data.log", FILE_WRITE);
+    if (f) {
+        f.print("{\"latitude\":");
+        f.print(latitude, 7);
+        f.print(",\"longitude\":");
+        f.print(longitude, 7);
+        f.print(",\"altitude\":");
+        f.print(altitude, 1);
+        f.print(",\"speed\":");
+        f.print(speed, 1);
+        f.print(",\"satellites\":");
+        f.print(satellites);
+        f.print(",\"unixTime\":");
+        f.print(unixTime);
+        f.print(",\"action\":\"");
+        f.print(action);
+        f.print("\"");
+        f.println("}");
+        f.close();
+    }
+    else {
+        Serial.println("Could not open SD for writing");
+    }
+}
+
 void setup() {
     // put your setup code here, to run once:
     Serial.begin(115200);
@@ -61,6 +88,10 @@ void setup() {
     if (!SD.begin(chipSelect)) {
         signalLedBlinkAndHalt("Failed to initialise SD card. Halting.");
     }
+    Serial.println("OK");
+
+    Serial.print("Writing boot log entry...");
+    appendDataFile(0, 0, 0, 0, 0, 0, "boot");
     Serial.println("OK");
 
     Serial.print("Configuring GPS refresh rate...");
@@ -86,32 +117,8 @@ void setup() {
     pinMode(pinButtonRed, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(pinButtonRed), onButtonPressedRed, FALLING);
     buttonPressedRed = false;
-}
 
-void appendDataFile(float latitude, float longitude, float altitude, float speed, int satellites, unsigned long unixTime, String action) {
-    File f = SD.open("data.log", FILE_WRITE);
-    if (f) {
-        f.print("{\"latitude\":");
-        f.print(latitude, 7);
-        f.print(",\"longitude\":");
-        f.print(longitude, 7);
-        f.print(",\"altitude\":");
-        f.print(altitude, 1);
-        f.print(",\"speed\":");
-        f.print(speed, 1);
-        f.print(",\"satellites\":");
-        f.print(satellites);
-        f.print(",\"unixTime\":");
-        f.print(unixTime);
-        f.print(",\"action\":\"");
-        f.print(action);
-        f.print("\"");
-        f.println("}");
-        f.close();
-    }
-    else {
-        Serial.println("Could not open SD for writing");
-    }
+    firstCycle = true;
 }
 
 void loop() {
@@ -139,6 +146,12 @@ void loop() {
         Serial.print(satellites);
         Serial.print("  Time: ");
         Serial.println(unixTime);
+
+        if (firstCycle) {
+            appendDataFile(latitude, longitude, altitude, speed, satellites, unixTime, "boot");
+            Serial.println("Boot entry was written to log");
+            firstCycle = false;
+        }
 
         if (buttonPressedGreen) {
             appendDataFile(latitude, longitude, altitude, speed, satellites, unixTime, "green");
