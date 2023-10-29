@@ -8,6 +8,7 @@ const int chipSelect = SDCARD_SS_PIN;
 int pinLed = LED_BUILTIN;
 int pinButtonGreen = 5;
 int pinButtonRed = 6;
+int pinBeeper = 4;
 bool buttonPressedGreen;
 bool buttonPressedRed;
 bool firstCycle;
@@ -30,17 +31,55 @@ void signalLedOn() {
     digitalWrite(pinLed, HIGH);
 }
 
+void beepOff() {
+    digitalWrite(pinBeeper, LOW);
+}
+
+void beepOn() {
+    digitalWrite(pinBeeper, HIGH);
+}
+
+void writeErrorFile(String errorMessage) {
+    File f = SD.open("error.log", FILE_WRITE);
+    if (f) {
+        f.println(errorMessage);
+        f.close();
+    }
+    else {
+        while (1) {
+            signalLedOff();
+            beepOff();
+            delay(50);
+            signalLedOn();
+            beepOn();
+            delay(50);
+        }
+    }
+}
+
 void signalLedBlinkAndHalt(String errorMessage) {
     while (1) {
         Serial.println(errorMessage);
+        writeErrorFile(errorMessage);
         signalLedOff();
+        beepOff();
         delay(200);
         signalLedOn();
+        beepOn();
         delay(200);
     }
 }
 
 void appendDataFile(float latitude, float longitude, float altitude, float speed, int satellites, unsigned long unixTime, String action) {
+    unsigned long time;
+
+    if (unixTime == 0) {
+        time = rtc.getSeconds() + rtc.getMinutes() * 60 + rtc.getHours() * 3600;
+    }
+    else {
+        time = unixTime;
+    }
+
     File f = SD.open("data.log", FILE_WRITE);
     if (f) {
         f.print("{\"latitude\":");
@@ -54,7 +93,7 @@ void appendDataFile(float latitude, float longitude, float altitude, float speed
         f.print(",\"satellites\":");
         f.print(satellites);
         f.print(",\"unixTime\":");
-        f.print(unixTime);
+        f.print(time);
         f.print(",\"action\":\"");
         f.print(action);
         f.print("\"");
@@ -69,10 +108,12 @@ void appendDataFile(float latitude, float longitude, float altitude, float speed
 void setup() {
     // put your setup code here, to run once:
     Serial.begin(115200);
-    while (!Serial);
 
     pinMode(pinLed, OUTPUT);
     signalLedOff();
+
+    pinMode(pinBeeper, OUTPUT);
+    beepOff();
 
     Serial.print("Initializing RTC...");
     rtc.begin();
@@ -83,6 +124,7 @@ void setup() {
     if (!GPS.begin()) {
         signalLedBlinkAndHalt("Failed to initialise GPS. Halting.");
     }
+    beepOff();
 
     Serial.print("Initializing SD card...");
     if (!SD.begin(chipSelect)) {
@@ -107,6 +149,11 @@ void setup() {
         else {
             signalLedOn();
         }
+        if (rtc.getSeconds() % 15 == 0) {
+            Serial.print(".");
+            appendDataFile(0, 0, 0, 0, 0, 0, "boot-wait-gps");
+            delay(1000);
+        }
     }
     Serial.println("OK");
 
@@ -120,6 +167,9 @@ void setup() {
 
     firstCycle = true;
 }
+
+uint8_t lastGpsAvailableMinutes;
+uint8_t lastGpsUnavailableMinutes;
 
 void loop() {
     GPS.available();
@@ -154,22 +204,40 @@ void loop() {
         }
 
         if (buttonPressedGreen) {
+            beepOn();
             appendDataFile(latitude, longitude, altitude, speed, satellites, unixTime, "green");
             Serial.println("Button: Green");
             signalLedOff();
             delay(1000);
             buttonPressedGreen = false;
+            beepOff();
         }
 
         if (buttonPressedRed) {
+            beepOn();
             appendDataFile(latitude, longitude, altitude, speed, satellites, unixTime, "red");
             Serial.println("Button: Red");
             signalLedOff();
             delay(1000);
             buttonPressedRed = false;
+            beepOff();
+        }
+
+        if (rtc.getMinutes() % 15 == 0) {
+            if (rtc.getMinutes() != lastGpsAvailableMinutes) {
+                appendDataFile(latitude, longitude, altitude, speed, satellites, unixTime, "gps-available");
+                lastGpsAvailableMinutes = rtc.getMinutes();
+            }
         }
     }
     else {
         signalLedOff();
+
+        if (rtc.getMinutes() % 15 == 0) {
+            if (rtc.getMinutes() != lastGpsUnavailableMinutes) {
+                appendDataFile(0, 0, 0, 0, 0, 0, "gps-unavailable");
+                lastGpsUnavailableMinutes = rtc.getMinutes();
+            }
+        }
     }
 }
