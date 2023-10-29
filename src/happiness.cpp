@@ -45,28 +45,33 @@ void writeErrorFile(String errorMessage) {
         f.println(errorMessage);
         f.close();
     }
-    else {
-        while (1) {
-            signalLedOff();
-            beepOff();
-            delay(50);
-            signalLedOn();
-            beepOn();
-            delay(50);
-        }
-    }
 }
 
-void signalLedBlinkAndHalt(String errorMessage) {
+void signalLedBlinkAndHalt(uint8_t errorCode, String errorMessage) {
+    writeErrorFile(errorMessage);
+
     while (1) {
-        Serial.println(errorMessage);
-        writeErrorFile(errorMessage);
-        signalLedOff();
-        beepOff();
-        delay(200);
+        Serial.print(errorMessage);
+        Serial.print(" #");
+        Serial.println(errorCode);
+
         signalLedOn();
-        beepOn();
-        delay(200);
+        delay(3000);
+        signalLedOff();
+
+        for (uint8_t n=0; n < errorCode; n++) {
+            beepOff();
+            signalLedOff();
+            delay(200);
+            beepOn();
+            signalLedOn();
+            delay(200);
+        }
+
+        beepOff();
+        signalLedOff();
+
+        delay(1000);
     }
 }
 
@@ -108,6 +113,7 @@ void appendDataFile(float latitude, float longitude, float altitude, float speed
 void setup() {
     // put your setup code here, to run once:
     Serial.begin(115200);
+    delay(1000);
 
     pinMode(pinLed, OUTPUT);
     signalLedOff();
@@ -121,16 +127,16 @@ void setup() {
     rtc.setDate(0, 0, 0);
     Serial.println("OK");
 
-    if (!GPS.begin()) {
-        signalLedBlinkAndHalt("Failed to initialise GPS. Halting.");
-    }
-    beepOff();
-
     Serial.print("Initializing SD card...");
     if (!SD.begin(chipSelect)) {
-        signalLedBlinkAndHalt("Failed to initialise SD card. Halting.");
+        signalLedBlinkAndHalt(1, "Failed to initialise SD card. Halting.");
     }
     Serial.println("OK");
+
+    if (!GPS.begin()) {
+        signalLedBlinkAndHalt(2, "Failed to initialise GPS. Halting.");
+    }
+    beepOff();
 
     Serial.print("Writing boot log entry...");
     appendDataFile(0, 0, 0, 0, 0, 0, "boot");
