@@ -108,9 +108,9 @@ void appendDataFile(float latitude, float longitude, float altitude, float speed
         f.print(speed, 1);
         f.print(",\"satellites\":");
         f.print(satellites);
-        f.print(",\"unixTime\":");
+        f.print(",\"timestamp\":\"");
         f.print(datetimeToWrite);
-        f.print(",\"action\":\"");
+        f.print("\",\"action\":\"");
         f.print(action);
         f.print("\"");
         f.println("}");
